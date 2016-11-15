@@ -5709,16 +5709,25 @@ Please submit there instead, or use --nodevelproject to force direct submission.
                 # only persist our own repos
                 Repo.tofile(repolistfile, repositories)
 
-        repo_names = sorted(set([r.name for r in repositories]))
+        repo_arches = {}
+        for repo in repositories:
+            repo_arches.setdefault(repo.name, []).append(repo.arch)
+        repo_names = sorted(repo_arches.keys())
+        build_repository = conf.config['build_repository']
+        if not arg_repository and build_repository in repo_names:
+            arg_repository = build_repository
         if not arg_repository and repositories:
             # XXX: we should avoid hardcoding repository names
             # Use a default value from config, but just even if it's available
             # unless try standard, or openSUSE_Factory, or openSUSE_Tumbleweed
-            arg_repository = repositories[-1].name
-            for repository in (conf.config['build_repository'], 'standard', 'openSUSE_Factory', 'openSUSE_Tumbleweed'):
-                if repository in repo_names:
-                    arg_repository = repository
+            repo_order = ['standard', 'openSUSE_Factory', 'openSUSE_Tumbleweed']
+            repo_order.extend(reversed([r.name for r in repositories]))
+            for repo_name in repo_order:
+                if arg_arch in repo_arches.get(repo_name, []):
+                    arg_repository = repo_name
                     break
+            if not arg_repository:
+                raise oscerr.WrongArgs('%s is not a valid arch for repositories: %' % (arg_arch, ''.join(repo_order)))
 
         if not arg_repository:
             raise oscerr.WrongArgs('please specify a repository')
