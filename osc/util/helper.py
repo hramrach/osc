@@ -42,20 +42,20 @@ def cmp_to_key(mycmp):
     return K
 
 
-def decode_list(ilist):
+def decode_list(ilist, errors='strict'):
     """ Decodes the elements of a list if needed
     """
 
     dlist = []
     for elem in ilist:
         if not isinstance(elem, str):
-            dlist.append(decode_it(elem))
+            dlist.append(decode_it(elem, errors=errors))
         else:
             dlist.append(elem)
     return dlist
 
 
-def decode_it(obj):
+def decode_it(obj, errors='strict'):
     """Decode the given object unless it is a str.
 
     If the given object is a str or has no decode method, the object itself is
@@ -66,9 +66,38 @@ def decode_it(obj):
     if isinstance(obj, str) or not hasattr(obj, 'decode'):
         return obj
     try:
-        return obj.decode('utf-8')
+        return obj.decode('utf-8', errors=errors)
     except UnicodeDecodeError:
         return obj.decode('latin-1')
+
+
+def encode_list(ilist, errors='strict'):
+    """ Encodes the elements of a list if needed
+    """
+
+    dlist = []
+    for elem in ilist:
+        if not isinstance(elem, bytes):
+            dlist.append(encode_it(elem, errors=errors))
+        else:
+            dlist.append(elem)
+    return dlist
+
+
+def encode_it(obj, errors='strict'):
+    """Encode the given object unless it is a bytes.
+
+    If the given object is a str or has no encode method, the object itself is
+    returned. Otherwise, try to encode the object using utf-8. If this
+    fails due to a UnicodeEncodeError, try to encode the object using
+    latin-1.
+    """
+    if isinstance(obj, bytes) or not hasattr(obj, 'encode'):
+        return obj
+    try:
+        return obj.encode('utf-8', errors=errors)
+    except UnicodeEncodeError:
+        return obj.encode('latin-1')
 
 
 def raw_input(*args):

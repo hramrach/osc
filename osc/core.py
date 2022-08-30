@@ -66,7 +66,7 @@ try:
 except ImportError:
     from .util.helper import cmp_to_key
 
-from osc.util.helper import decode_list, decode_it, raw_input, _html_escape
+from osc.util.helper import decode_list, decode_it, encode_list, raw_input, _html_escape
 
 try:
     # python 2.6 and python 2.7
@@ -2013,33 +2013,33 @@ class Package:
 
     def get_diff(self, revision=None, ignoreUnversioned=False):
         import tempfile
-        diff_hdr = b'Index: %s\n'
-        diff_hdr += b'===================================================================\n'
+        diff_hdr = 'Index: %s\n'
+        diff_hdr += '===================================================================\n'
         kept = []
         added = []
         deleted = []
         def diff_add_delete(fname, add, revision):
             diff = []
-            diff.append(diff_hdr % fname.encode())
+            diff.append(diff_hdr % fname)
             tmpfile = None
             origname = fname
             if add:
-                diff.append(b'--- %s\t(revision 0)\n' % fname.encode())
+                diff.append('--- %s\t(revision 0)\n' % fname)
                 rev = 'revision 0'
                 if revision and not fname in self.to_be_added:
                     rev = 'working copy'
-                diff.append(b'+++ %s\t(%s)\n' % (fname.encode(), rev.encode()))
+                diff.append('+++ %s\t(%s)\n' % (fname, rev))
                 fname = os.path.join(self.absdir, fname)
                 if not os.path.isfile(fname):
                     raise oscerr.OscIOError(None, 'file \'%s\' is marked as \'A\' but does not exist\n'
                                             '(either add the missing file or revert it)' % fname)
             else:
                 if revision:
-                    b_revision = str(revision).encode()
+                    s_revision = str(revision)
                 else:
-                    b_revision = self.rev.encode()
-                diff.append(b'--- %s\t(revision %s)\n' % (fname.encode(), b_revision))
-                diff.append(b'+++ %s\t(working copy)\n' % fname.encode())
+                    s_revision = self.rev
+                diff.append('--- %s\t(revision %s)\n' % (fname, s_revision))
+                diff.append('+++ %s\t(working copy)\n' % fname)
                 fname = os.path.join(self.storedir, fname)
                
             try:
@@ -2048,28 +2048,28 @@ class Package:
                     get_source_file(self.apiurl, self.prjname, self.name, origname, tmpfile, revision)
                     fname = tmpfile
                 if binary_file(fname):
-                    what = b'added'
+                    what = 'added'
                     if not add:
-                        what = b'deleted'
+                        what = 'deleted'
                     diff = diff[:1]
-                    diff.append(b'Binary file \'%s\' %s.\n' % (origname.encode(), what))
+                    diff.append('Binary file \'%s\' %s.\n' % (origname, what))
                     return diff
-                tmpl = b'+%s'
-                ltmpl = b'@@ -0,0 +1,%d @@\n'
+                tmpl = '+%s'
+                ltmpl = '@@ -0,0 +1,%d @@\n'
                 if not add:
-                    tmpl = b'-%s'
-                    ltmpl = b'@@ -1,%d +0,0 @@\n'
-                lines = [tmpl % i for i in open(fname, 'rb').readlines()]
+                    tmpl = '-%s'
+                    ltmpl = '@@ -1,%d +0,0 @@\n'
+                lines = [tmpl % i for i in decode_list(open(fname, 'rb').readlines(), errors='surrogateescape')]
                 if len(lines):
                     diff.append(ltmpl % len(lines))
-                    if not lines[-1].endswith(b'\n'):
-                        lines.append(b'\n\\ No newline at end of file\n')
+                    if not lines[-1].endswith('\n'):
+                        lines.append('\n\\ No newline at end of file\n')
                 diff.extend(lines)
             finally:
                 if tmpfile is not None:
                     os.close(fd)
                     os.unlink(tmpfile)
-            return diff
+            return encode_list(diff, errors='surrogateescape')
 
         if revision is None:
             todo = self.todo or [i for i in self.filenamelist if not i in self.to_be_added]+self.to_be_added
@@ -2108,7 +2108,7 @@ class Package:
                 continue
             elif revision and self.findfilebyname(f.name).md5 == f.md5 and state != 'M':
                 continue
-            yield [diff_hdr % f.name.encode()]
+            yield [diff_hdr % f.name]
             if revision is None:
                 yield get_source_file_diff(self.absdir, f.name, self.rev)
             else:
@@ -4893,7 +4893,7 @@ def get_source_file_diff(dir, filename, rev, oldfilename = None, olddir = None, 
     file1 = os.path.join(olddir, oldfilename)   # old/stored original
     file2 = os.path.join(dir, filename)         # working copy
     if binary_file(file1) or binary_file(file2):
-        return [b'Binary file \'%s\' has changed.\n' % origfilename.encode()]
+        return ['Binary file \'%s\' has changed.\n' % origfilename]
 
     f1 = f2 = None
     try:
@@ -4910,30 +4910,32 @@ def get_source_file_diff(dir, filename, rev, oldfilename = None, olddir = None, 
         if f2:
             f2.close()
     
-    from_file = b'%s\t(revision %s)' % (origfilename.encode(), str(rev).encode())
-    to_file = b'%s\t(working copy)' % origfilename.encode()
+    from_file = '%s\t(revision %s)' % (origfilename, str(rev))
+    to_file = '%s\t(working copy)' % origfilename
 
-    if sys.version_info < (3, 0):
-        d = difflib.unified_diff(s1, s2,
-            fromfile = from_file, \
-        tofile = to_file)
+    if sys.version_info < (3, 5):
+        d = difflib.unified_diff(decode_list(s1, errors='surrogateescape'),
+                                 decode_list(s2, errors='surrogateescape'),
+                                 fromfile=from_file,
+                                 tofile=to_file)
     else:
-        d = difflib.diff_bytes(difflib.unified_diff, s1, s2, \
-            fromfile = from_file, \
-            tofile = to_file)
+        d = decode_list(difflib.diff_bytes(difflib.unified_diff, s1, s2,
+                                           fromfile=from_file.encode(),
+                                           tofile=to_file.encode()),
+                        errors='surrogateescape')
     d = list(d)
     # python2.7's difflib slightly changed the format
     # adapt old format to the new format
     if len(d) > 1:
-        d[0] = d[0].replace(b' \n', b'\n')
-        d[1] = d[1].replace(b' \n', b'\n')
+        d[0] = d[0].replace(' \n', '\n')
+        d[1] = d[1].replace(' \n', '\n')
 
     # if file doesn't end with newline, we need to append one in the diff result
     for i, line in enumerate(d):
-        if not line.endswith(b'\n'):
-            d[i] += b'\n\\ No newline at end of file'
+        if not line.endswith('\n'):
+            d[i] += '\n\\ No newline at end of file'
             if i+1 != len(d):
-                d[i] += b'\n'
+                d[i] += '\n'
     return d
 
 def server_diff(apiurl,
@@ -7510,10 +7512,10 @@ def get_commit_message_template(pac):
             diff += get_source_file_diff(pac.absdir, filename, pac.rev)
         elif pac.status(filename) == 'A':
             with open(os.path.join(pac.absdir, filename), 'rb') as f:
-                diff.extend((b'+' + line for line in f))
+                diff.extend(('+' + line for line in f))
 
     if diff:
-        template = parse_diff_for_commit_message(''.join(decode_list(diff)))
+        template = parse_diff_for_commit_message(''.join(diff))
 
     return template
 
